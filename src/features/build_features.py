@@ -2,7 +2,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from DataTransformation import LowPassFilter, PrincipalComponentAnalysis
-from TemporalAbstraction import *
+from TemporalAbstraction import NumericalAbstraction
+from FrequencyAbstraction import FourierTransformation
 
 
 
@@ -81,20 +82,75 @@ for col in predictor_columns:
 # Principal component analysis PCA
 # --------------------------------------------------------------
 
+df_pca = df_lowpass.copy()
+PCA = PrincipalComponentAnalysis()
 
+pc_values = PCA.determine_pc_explained_variance(df_pca, predictor_columns)
+
+
+#Elbow Technqiue - a method used to determine the number of components to use when condction PCA
+
+df_pca = PCA.apply_pca(df_pca, predictor_columns, 3)
+
+
+subset = df_pca[df_pca["set"] == 35]
+subset[["pca_1", "pca_2", "pca_3"]].plot()
 # --------------------------------------------------------------
 # Sum of squares attributes
 # --------------------------------------------------------------
+
+df_squared = df_pca.copy()
+acc_r = df_squared["acc_x"] ** 2 + df_squared["acc_y"] ** 2 + df_squared["acc_z"] ** 2
+gyr_r = df_squared["gyr_x"] ** 2 + df_squared["gyr_y"] ** 2 + df_squared["gyr_z"] ** 2
+
+df_squared["acc_r"] = np.sqrt(acc_r)
+df_squared["gyr_r"] = np.sqrt(gyr_r)
+
+subset = df_squared[df_squared["set"] == 14]
+subset [["acc_r", "gyr_r"]].plot(subplots = True)
 
 
 # --------------------------------------------------------------
 # Temporal abstraction
 # --------------------------------------------------------------
+#Calculating Rolling Averages
 
+df_temporal = df_squared.copy()
+NumAbs = NumericalAbstraction()
 
-# --------------------------------------------------------------
+predictor_columns = predictor_columns + ["acc_r", "gyr_r"]
+
+#window size
+#window size of 5
+ws = int(1000 / 200)
+
+for col in predictor_columns:
+    df_temporal = NumAbs.abstract_numerical(df_temporal, [col], ws, "mean")
+    df_temporal = NumAbs.abstract_numerical(df_temporal, [col], ws, "std")
+    
+
+df_temporal_list = []
+for s in df_temporal["set"].unique():
+    subset = df_temporal[df_temporal["set"] == s].copy()
+    for col in predictor_columns:
+        subset = NumAbs.abstract_numerical(subset, [col], ws, "mean")
+        subset = NumAbs.abstract_numerical(subset, [col], ws, "std")
+    df_temporal_list.append(subset)
+    
+df_temporal = pd.concat(df_temporal_list)
+
+subset[["acc_y", "acc_y_temp_mean_ws_5", "acc_y_temp_std_ws_5"]].plot()
+subset[["gyr_y", "gyr_y_temp_mean_ws_5", "gyr_y_temp_std_ws_5"]].plot()
+
+# --------------------------------------------------------------``
 # Frequency features
 # --------------------------------------------------------------
+
+#Discretet Fourier Trnasfomration Technique
+#Any squence of measuerts can we can perfor can be repressented by any sinusoid functions with different frequencies
+
+df_freq = df_temporal.copy().reset_index()
+
 
 
 # --------------------------------------------------------------

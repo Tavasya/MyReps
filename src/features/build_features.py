@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from DataTransformation import LowPassFilter, PrincipalComponentAnalysis
 from TemporalAbstraction import NumericalAbstraction
 from FrequencyAbstraction import FourierTransformation
+from sklearn.cluster import KMeans
 
 
 
@@ -87,6 +88,10 @@ PCA = PrincipalComponentAnalysis()
 
 pc_values = PCA.determine_pc_explained_variance(df_pca, predictor_columns)
 
+plt.figure(figsize = (10,10))
+plt.plot(range(1, len(predictor_columns) + 1), pc_values)
+plt.xlabel("principle component number")
+plt.ylabel("explained variance")
 
 #Elbow Technqiue - a method used to determine the number of components to use when condction PCA
 
@@ -107,7 +112,7 @@ df_squared["acc_r"] = np.sqrt(acc_r)
 df_squared["gyr_r"] = np.sqrt(gyr_r)
 
 subset = df_squared[df_squared["set"] == 14]
-subset [["acc_r", "gyr_r"]].plot(subplots = True)
+subset[["acc_r", "gyr_r"]].plot(subplots = True)
 
 
 # --------------------------------------------------------------
@@ -150,19 +155,91 @@ subset[["gyr_y", "gyr_y_temp_mean_ws_5", "gyr_y_temp_std_ws_5"]].plot()
 #Any squence of measuerts can we can perfor can be repressented by any sinusoid functions with different frequencies
 
 df_freq = df_temporal.copy().reset_index()
+FreqAbs = FourierTransformation()
 
+#sampling rate
+fs = int(1000/200)
+ws = int(2000/200)
+
+
+
+
+df_freq = FreqAbs.abstract_frequency(df_freq, ["acc_y"], ws, fs)
+
+
+
+df_freq_list = []
+for s in df_freq["set"].unique():
+    print(f"Applying Fourier transformation to set {s}")
+    subset = df_freq[df_freq["set"] == s].reset_index(drop = True).copy()
+    subset = FreqAbs.abstract_frequency(subset, predictor_columns, ws, fs)   
+    df_freq_list.append(subset)
+    
+df_freq = pd.concat(df_freq_list).set_index("epoch (ms)", drop = True)
 
 
 # --------------------------------------------------------------
 # Dealing with overlapping windows
 # --------------------------------------------------------------
 
+#Dropping some data since we only need 50% overlap since our dataset is so huge
+df_freq = df_freq.dropna()
 
+df_freq = df_freq.iloc[::2]
 # --------------------------------------------------------------
 # Clustering
 # --------------------------------------------------------------
 
+df_cluster = df_freq.copy()
+cluster_colums = ["acc_x", "acc_y", "acc_z"]
+k_values = range(2,10)
+inertias = []
+
+for k in k_values:
+    subset = df_cluster[cluster_colums]
+    kmeans = KMeans(n_clusters=k, n_init = 20, random_state = 0)
+    cluster_labels = kmeans.fit_predict(subset)
+    inertias.append(kmeans.inertia_)
+    
+
+plt.figure(figsize = (10,10))
+plt.plot(k_values, inertias)
+plt.xlabel("k")
+plt.ylabel("Sum of squared distances")
+plt.show()
+
+
+kmeans = KMeans(n_clusters= 5, n_init = 20, random_state = 0)
+subset = df_cluster[cluster_colums]
+df_cluster["cluster"] = kmeans.fit_predict(subset)
+
+
+#Plot cluser
+fig = plt.figure(figsize=(15, 15))
+ax = fig.add_subplot(projection = "3d")
+for c in df_cluster["cluster"].unique():
+    subset = df_cluster[df_cluster["cluster"] == c]
+    ax.scatter(subset["acc_x"], subset["acc_y"], subset["acc_z"], label = c)
+ax.set_xlabel("X-axis")
+ax.set_ylabel("Y-axis")
+ax.set_zlabel("Z-axis")
+plt.legend()
+plt.show()
+
+#Splitting by label
+fig = plt.figure(figsize=(15, 15))
+ax = fig.add_subplot(projection = "3d")
+for l in df_cluster["label"].unique():
+    subset = df_cluster[df_cluster["label"] == l]
+    ax.scatter(subset["acc_x"], subset["acc_y"], subset["acc_z"], label = l)
+ax.set_xlabel("X-axis")
+ax.set_ylabel("Y-axis")
+ax.set_zlabel("Z-axis")
+plt.legend()
+plt.show()
 
 # --------------------------------------------------------------
 # Export dataset
 # --------------------------------------------------------------
+
+df_cluster.to_pickle("../../data/interim/03_data_features.pkl")
